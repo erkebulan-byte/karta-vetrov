@@ -122,7 +122,7 @@
     <button id="obsTable" type="button">Таблица</button>
     <button id="obsExcel" type="button">Excel</button>
   </div>
-  <p class="note">Через метки 5, 10 и 20 км идут прямые на север и юг. Соседние точки — ровно 5 км. У каждой точки написаны широта и долгота. Красную точку в центре линии можно перетащить: остальные точки и координаты этой линии пересчитаются. Исходные метки на дороге остаются на месте.</p>
+  <p class="note">Через село Кыземшек и метки 5, 10 и 20 км идут прямые на север и юг. Соседние точки — ровно 5 км. У каждой точки написаны широта и долгота. Красную точку в центре линии можно перетащить: остальные точки и координаты этой линии пересчитаются. Исходные метки на дороге остаются на месте.</p>
 </aside>
 <div class="hud" id="hud">Тяните большой или малый круг. После отпускания цифры считаются для этой точки.</div>
 <div class="sheet" id="sheet">
@@ -274,10 +274,10 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
   attribution: "Снимок Esri, Maxar, Earthstar Geographics · ветер ERA5"
 }).addTo(map);
 L.control.scale({ imperial: false, position: "bottomright" }).addTo(map);
-const villageTitle = dest(WIND.village.lat, WIND.village.lon, 0, 2100);
+const villageTitle = dest(WIND.village.lat, WIND.village.lon, 270, 900);
 L.marker(villageTitle, {
   interactive: false,
-  icon: L.divIcon({ className: "place", html: WIND.village.name, iconSize: [120, 18], iconAnchor: [60, 18] })
+  icon: L.divIcon({ className: "place", html: WIND.village.name, iconSize: [120, 18], iconAnchor: [120, 9] })
 }).addTo(map);
 
 const ROAD = [
@@ -1072,7 +1072,15 @@ let obsCount = 3;
 const obsProfiles = ["20", "10", "5"].map((id) => {
   const mark = MARKS.find((item) => item.km === id + " км");
   const color = id === "20" ? "#ff2d3c" : id === "10" ? "#f39a1a" : "#3aa0e8";
-  return { id, title: mark.km, color, lat: mark.lat, lon: mark.lon };
+  return { id, title: mark.km, color, lat: mark.lat, lon: mark.lon, side: "west" };
+});
+obsProfiles.push({
+  id: "0",
+  title: "Кыземшек",
+  color: "#b06bff",
+  lat: WIND.village.lat,
+  lon: WIND.village.lon,
+  side: "east",
 });
 
 function paintProfile(profile, moveCenter) {
@@ -1089,7 +1097,7 @@ function paintProfile(profile, moveCenter) {
     lineCap: "round",
     interactive: false,
   }).addTo(profile.group);
-  const side = "west";
+  const side = profile.side || "west";
   points.forEach((point, index) => {
     if (point.center) return;
     const kind = index === 0 || index === points.length - 1 ? "end" : "mid";
@@ -1129,7 +1137,7 @@ function setupObservations() {
       draggable: true,
       autoPan: true,
       zIndexOffset: 12000,
-      icon: obsIcon("center", profile.id + ".1", "west", profile.lat, profile.lon),
+      icon: obsIcon("center", profile.id + ".1", profile.side || "west", profile.lat, profile.lon),
     }).addTo(map);
     const followCenter = () => {
       const ll = profile.centerMarker.getLatLng();
