@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Роза ветров на карте</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html, body { height: 100%; margin: 0; background: #1c1916; color: #2b2824; font-family: "Segoe UI", sans-serif; }
+  #map, #view3d { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #view3d { display: none; touch-action: none; }
+  .panel {
+    position: fixed; z-index: 800; left: 16px; top: 16px; width: 280px;
+    background: rgba(255,253,251,0.94); border-radius: 16px; padding: 16px 16px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  }
+  .panel h1 { margin: 0; font-size: 20px; letter-spacing: 0.02em; }
+  .muted { color: #6f675e; font-size: 12px; line-height: 1.35; margin-top: 4px; }
+  .big { margin: 12px 0 0; font-size: 34px; line-height: 1; color: #8d3424; font-weight: 700; }
+  .sub { margin: 4px 0 0; font-size: 14px; }
+  .stats { display: flex; gap: 14px; margin-top: 12px; }
+  .stats b { display: block; font-size: 16px; }
+  .stats span { color: #6f675e; font-size: 11px; }
+  .modes, .years { display: flex; gap: 6px; margin-top: 12px; }
+  button {
+    border: 0; background: #efeae2; color: #2b2824; border-radius: 999px;
+    padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button.on { background: #8d3424; color: white; }
+  .legend { margin-top: 12px; display: grid; grid-template-columns: 14px 1fr; gap: 4px 8px; align-items: center; font-size: 12px; }
+  .swatch { width: 14px; height: 10px; border-radius: 2px; }
+  .note { margin: 10px 0 0; font-size: 11px; color: #6f675e; line-height: 1.35; }
+  .hud {
+    position: fixed; z-index: 800; right: 16px; bottom: 16px; max-width: 360px;
+    color: white; font-size: 12px; line-height: 1.35;
+    background: rgba(28,25,22,0.55); border-radius: 10px; padding: 8px 10px;
+  }
+  .place {
+    color: white; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px #000, 0 0 6px #000;
+    background: transparent; border: 0;
+  }
+  .km-pin { background: transparent; border: 0; }
+  .km-pin b {
+    position: absolute; left: 18px; top: -22px; transform: translateX(-50%);
+    background: rgba(255,253,251,0.94); color: #c4162a; font-size: 13px; font-weight: 700;
+    white-space: nowrap; padding: 1px 6px; border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  }
+  .leaflet-rose { pointer-events: none; }
+  .rose-handle { background: transparent; border: 0; border-radius: 50%; cursor: grab; touch-action: none; }
+  .rose-handle:active { cursor: grabbing; }
+  .obs-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .obs-tools label { font-size: 12px; color: #6f675e; display: flex; gap: 6px; align-items: center; }
+  .obs-tools input { width: 48px; border: 0; border-radius: 8px; background: #efeae2; padding: 6px 4px; font: inherit; text-align: center; }
+  .obs-pt, .obs-gap { background: transparent; border: 0; }
+  .obs-pt i { display: block; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+  .obs-pt b {
+    position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+    color: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none;
+    text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  }
+  .obs-pt b.west { left: auto; right: 20px; }
+  .obs-center { cursor: grab; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .obs-center:active { cursor: grabbing; }
+  .obs-center b { left: 40px; }
+  .obs-center b.west { left: auto; right: 40px; }
+  .obs-gap {
+    color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
+    text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  }
+  .sheet {
+    display: none; position: fixed; z-index: 900; right: 16px; top: 64px; width: min(560px, calc(100% - 32px));
+    max-height: 48vh; overflow: auto; background: rgba(255,253,251,0.96); color: #2b2824;
+    border-radius: 14px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sheet table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .sheet th, .sheet td { padding: 3px 6px; text-align: right; white-space: nowrap; }
+  .sheet th:nth-child(-n+2), .sheet td:nth-child(-n+2) { text-align: left; }
+  .sheet tr:nth-child(even) { background: rgba(239,234,226,0.7); }
+  @media (max-width: 720px) {
+    .panel {
+      left: 8px; right: 8px; top: auto; bottom: 8px; width: auto;
+      max-height: 42vh; overflow: auto; padding: 10px 12px 8px;
+    }
+    .panel h1 { font-size: 17px; }
+    .big { margin-top: 6px; font-size: 26px; }
+    .stats { gap: 10px; margin-top: 8px; }
+    .modes, .years { margin-top: 8px; flex-wrap: wrap; }
+    button { padding: 8px 12px; font-size: 14px; }
+    .legend { margin-top: 8px; grid-template-columns: 14px 1fr 14px 1fr; font-size: 11px; }
+    .note { display: none; }
+    .hud { left: 8px; right: auto; top: 8px; bottom: auto; max-width: 68%; }
+    .sheet { left: 8px; right: 8px; top: 8px; width: auto; max-height: 34vh; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<canvas id="view3d"></canvas>
+<aside class="panel">
+  <h1>Роза ветров</h1>
+  <div class="muted" id="where"></div>
+  <div class="big" id="dir"></div>
+  <div class="sub" id="share"></div>
+  <div class="stats">
+    <div><b id="speed"></b><span>средняя скорость</span></div>
+    <div><b id="calm"></b><span>штиль</span></div>
+    <div><b id="hours"></b><span>часов</span></div>
+  </div>
+  <div class="years" id="years"></div>
+  <div class="modes">
+    <button id="btn2d" class="on" type="button">Карта</button>
+    <button id="btn3d" type="button">Объём</button>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="obs-tools">
+    <label>Точек на линии <input id="obsCount" type="number" min="3" max="15" step="2" value="7" title="Нечётное число: метка остаётся средней точкой"></label>
+    <button id="obsTable" type="button">Таблица</button>
+    <button id="obsExcel" type="button">Excel</button>
+  </div>
+  <p class="note">Через метки 5, 10 и 20 км идут прямые на север и юг. Соседние точки — ровно 5 км. Красную точку в центре линии можно перетащить: остальные точки этой линии пересчитаются. Исходные метки на дороге остаются на месте.</p>
+</aside>
+<div class="hud" id="hud">Тяните большой или малый круг. После отпускания цифры считаются для этой точки.</div>
+<div class="sheet" id="sheet">
+  <div class="sheet-head"><b>Точки наблюдения, WGS84</b><button id="sheetClose" type="button">Закрыть</button></div>
+  <table id="sheetTable"></table>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/three@0.159.0/build/three.min.js"></script>
+<script>
+const WIND = {"lat": 45.25264, "lon": 68.843157, "place": "45,253° с.ш., 68,843° в.д. · Сузакский район · ERA5, 10 м, 2023–2025", "village": {"name": "Кыземшек", "lat": 45.266304, "lon": 68.92321}, "series": {"2023–2025": {"names": ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"], "counts": [[157, 656, 305, 95, 6, 0], [147, 817, 464, 134, 23, 0], [175, 999, 762, 220, 6, 0], [162, 1130, 1253, 499, 175, 0], [180, 1295, 2009, 1219, 604, 27], [147, 797, 769, 289, 64, 0], [159, 402, 203, 53, 1, 0], [110, 263, 121, 18, 0, 0], [105, 225, 89, 14, 4, 0], [118, 200, 134, 39, 19, 0], [121, 357, 246, 179, 97, 12], [156, 506, 420, 434, 337, 15], [206, 640, 549, 358, 195, 3], [158, 590, 397, 191, 44, 0], [206, 544, 307, 75, 18, 0], [162, 527, 234, 48, 13, 0]], "hours": 26304, "calm": 0.36876520681265207, "mean": 4.4139317214112195, "prevailing": "восток", "share": 20.278284671532848}, "2023": {"names": ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"], "counts": [[37, 211, 95, 26, 0, 0], [41, 257, 145, 46, 0, 0], [50, 283, 304, 37, 4, 0], [37, 362, 483, 172, 37, 0], [50, 425, 678, 435, 278, 27], [45, 249, 219, 88, 34, 0], [51, 120, 70, 31, 0, 0], [38, 78, 43, 9, 0, 0], [32, 82, 35, 6, 0, 0], [49, 59, 54, 15, 8, 0], [42, 115, 96, 66, 32, 9], [47, 165, 115, 149, 130, 7], [54, 209, 183, 110, 60, 2], [53, 203, 161, 71, 12, 0], [45, 219, 98, 33, 4, 0], [39, 172, 73, 20, 3, 0]], "hours": 8760, "calm": 0.31963470319634707, "mean": 4.5543984018264885, "prevailing": "восток", "share": 21.609589041095887}, "2024": {"names": ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"], "counts": [[66, 234, 112, 38, 5, 0], [58, 287, 181, 55, 6, 0], [60, 335, 234, 99, 1, 0], [63, 356, 318, 151, 104, 0], [65, 350, 573, 339, 149, 0], [40, 279, 276, 94, 9, 0], [58, 152, 63, 13, 0, 0], [36, 94, 35, 8, 0, 0], [41, 73, 29, 5, 2, 0], [31, 88, 48, 14, 4, 0], [39, 122, 98, 81, 44, 0], [55, 191, 191, 158, 108, 3], [82, 242, 216, 126, 60, 0], [61, 215, 137, 60, 18, 0], [85, 164, 109, 9, 1, 0], [72, 183, 77, 9, 2, 0]], "hours": 8784, "calm": 0.39845173041894355, "mean": 4.329379553734069, "prevailing": "восток", "share": 16.80327868852459}, "2025": {"names": ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"], "counts": [[54, 211, 98, 31, 1, 0], [48, 273, 138, 33, 17, 0], [65, 381, 224, 84, 1, 0], [62, 412, 452, 176, 34, 0], [65, 520, 758, 445, 177, 0], [62, 269, 274, 107, 21, 0], [50, 130, 70, 9, 1, 0], [36, 91, 43, 1, 0, 0], [32, 70, 25, 3, 2, 0], [38, 53, 32, 10, 7, 0], [40, 120, 52, 32, 21, 3], [54, 150, 114, 127, 99, 5], [70, 189, 150, 122, 75, 1], [44, 172, 99, 60, 14, 0], [76, 161, 100, 33, 13, 0], [51, 172, 84, 19, 8, 0]], "hours": 8760, "calm": 0.3881278538812785, "mean": 4.358248858447473, "prevailing": "восток", "share": 22.43150684931507}}, "ground": {"image": "map_ground.jpg", "west": 68.6865234375, "east": 68.994140625, "north": 45.36758436884978, "south": 45.15105326556339}};
+const COLORS = ["#d5e3f0", "#7eafd4", "#3f8f72", "#e2b13a", "#d46832", "#8d2f39"];
+const GRADES = ["0,5–2 м/с", "2–4 м/с", "4–6 м/с", "6–8 м/с", "8–12 м/с", "≥ 12 м/с"];
+const MAX_M = 4500;
+const SMALL_M = 1500;
+const SCALE = MAX_M / 22.5;
+
+let current = "2023–2025";
+const NAMES = ["С", "ССВ", "СВ", "ВСВ", "В", "ВЮВ", "ЮВ", "ЮЮВ", "Ю", "ЮЮЗ", "ЮЗ", "ЗЮЗ", "З", "ЗСЗ", "СЗ", "ССЗ"];
+const FULLN = ["север", "северо-северо-восток", "северо-восток", "востоко-северо-восток", "восток", "востоко-юго-восток", "юго-восток", "юго-юго-восток", "юг", "юго-юго-запад", "юго-запад", "западо-юго-запад", "запад", "западо-северо-запад", "северо-запад", "северо-северо-запад"];
+
+function cellKey(lat, lon) {
+  return (Math.round(lat * 4) / 4).toFixed(2) + "," + (Math.round(lon * 4) / 4).toFixed(2);
+}
+
+const live = {
+  lat: WIND.lat,
+  lon: WIND.lon,
+  series: WIND.series,
+  cell: cellKey(WIND.lat, WIND.lon),
+};
+const small = {
+  lat: WIND.village.lat,
+  lon: WIND.village.lon,
+  series: null,
+  cell: cellKey(WIND.village.lat, WIND.village.lon),
+};
+const windCache = new Map([[live.cell, WIND.series]]);
+const inflight = new Map();
+let savedPoint = { lat: live.lat, lon: live.lon };
+let savedSmall = { lat: small.lat, lon: small.lon };
+let loadToken = 0;
+let smallToken = 0;
+let focus = "big";
+
+function focused() {
+  return focus === "small" && small.series ? small : live;
+}
+
+function series() { return focused().series[current]; }
+
+function comma(value, digits) {
+  return value.toFixed(digits).replace(".", ",");
+}
+
+function placeLine(note) {
+  const point = focused();
+  const cell = point.cell.split(",");
+  const which = point === small ? "малый круг" : "большой круг";
+  let text = which + " · " + comma(point.lat, 3) + "° с.ш., " + comma(point.lon, 3) + "° в.д. · ячейка ERA5 "
+    + cell[0].replace(".", ",") + "° / " + cell[1].replace(".", ",") + "° · 10 м";
+  if (note) text += " · " + note;
+  return text;
+}
+
+function packHours(speeds, dirs) {
+  const counts = Array.from({ length: 16 }, () => [0, 0, 0, 0, 0, 0]);
+  let hours = 0;
+  let calmN = 0;
+  let sum = 0;
+  for (let i = 0; i < speeds.length; i++) {
+    const sp = speeds[i];
+    const di = dirs[i];
+    if (sp == null || !Number.isFinite(sp) || sp < 0) continue;
+    const directed = sp >= 0.5 && di != null && Number.isFinite(di);
+    if (!(sp < 0.5 || directed)) continue;
+    hours += 1;
+    sum += sp;
+    if (sp < 0.5) {
+      calmN += 1;
+      continue;
+    }
+    const folded = (((di % 360) + 360) % 360 + 11.25) % 360;
+    const sector = Math.floor(folded / 22.5) % 16;
+    let bin = 0;
+    if (sp >= 12) bin = 5;
+    else if (sp >= 8) bin = 4;
+    else if (sp >= 6) bin = 3;
+    else if (sp >= 4) bin = 2;
+    else if (sp >= 2) bin = 1;
+    counts[sector][bin] += 1;
+  }
+  const totals = counts.map((row) => row.reduce((acc, value) => acc + value, 0));
+  const bestN = totals.length ? Math.max(...totals) : 0;
+  const tiedIndex = totals.reduce((list, n, index) => (bestN > 0 && n === bestN ? list.concat(index) : list), []);
+  return {
+    names: NAMES,
+    counts,
+    hours,
+    calm: hours ? calmN / hours * 100 : 0,
+    mean: hours ? sum / hours : 0,
+    prevailing: tiedIndex.length ? tiedIndex.map((index) => FULLN[index]).join(" и ") : "штиль",
+    share: hours && tiedIndex.length ? bestN / hours * 100 : 0,
+  };
+}
+
+function seriesFromHourly(times, speeds, dirs) {
+  const years = { 2023: [[], []], 2024: [[], []], 2025: [[], []] };
+  const allS = [];
+  const allD = [];
+  for (let i = 0; i < times.length; i++) {
+    const year = String(times[i]).slice(0, 4);
+    if (!years[year]) continue;
+    years[year][0].push(speeds[i]);
+    years[year][1].push(dirs[i]);
+    allS.push(speeds[i]);
+    allD.push(dirs[i]);
+  }
+  return {
+    "2023–2025": packHours(allS, allD),
+    2023: packHours(years[2023][0], years[2023][1]),
+    2024: packHours(years[2024][0], years[2024][1]),
+    2025: packHours(years[2025][0], years[2025][1]),
+  };
+}
+
+function dest(lat, lon, bearingDeg, distM) {
+  const R = 6378137;
+  const delta = distM / R;
+  const theta = bearingDeg * Math.PI / 180;
+  const phi1 = lat * Math.PI / 180;
+  const lambda1 = lon * Math.PI / 180;
+  const phi2 = Math.asin(Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta));
+  const lambda2 = lambda1 + Math.atan2(
+    Math.sin(theta) * Math.sin(delta) * Math.cos(phi1),
+    Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2)
+  );
+  return [phi2 * 180 / Math.PI, ((lambda2 * 180 / Math.PI + 540) % 360) - 180];
+}
+
+function sectorPct(row) {
+  return row.reduce((sum, n) => sum + n, 0) / series().hours * 100;
+}
+
+const map = L.map("map", { zoomControl: false, attributionControl: true }).setView([WIND.lat, WIND.lon], 12);
+L.control.zoom({ position: "topright" }).addTo(map);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 19,
+  attribution: "Снимок Esri, Maxar, Earthstar Geographics · ветер ERA5"
+}).addTo(map);
+L.control.scale({ imperial: false, position: "bottomright" }).addTo(map);
+const villageTitle = dest(WIND.village.lat, WIND.village.lon, 0, 2100);
+L.marker(villageTitle, {
+  interactive: false,
+  icon: L.divIcon({ className: "place", html: WIND.village.name, iconSize: [120, 18], iconAnchor: [60, 18] })
+}).addTo(map);
+
+const ROAD = [
+  [45.266304, 68.923210],
+  [45.266537, 68.921196],
+  [45.267491, 68.921193],
+  [45.267491, 68.920096],
+  [45.267491, 68.918687],
+  [45.267477, 68.917319],
+  [45.267460, 68.916168],
+  [45.268558, 68.915944],
+  [45.269528, 68.917042],
+  [45.273870, 68.920450],
+  [45.274718, 68.921131],
+  [45.275847, 68.922049],
+  [45.276701, 68.917553],
+  [45.277533, 68.913168],
+  [45.277403, 68.911608],
+  [45.276656, 68.905867],
+  [45.275801, 68.899538],
+  [45.275765, 68.897946],
+  [45.275792, 68.893203],
+  [45.275297, 68.892077],
+  [45.274641, 68.891080],
+  [45.273781, 68.888772],
+  [45.273349, 68.887200],
+  [45.272998, 68.886030],
+  [45.273241, 68.884598],
+  [45.273592, 68.882398],
+  [45.273948, 68.879707],
+  [45.274078, 68.878051],
+  [45.274362, 68.876376],
+  [45.275320, 68.870885],
+  [45.276292, 68.865137],
+  [45.276323, 68.863360],
+  [45.276121, 68.860029],
+  [45.276233, 68.857798],
+  [45.276791, 68.852984],
+  [45.277223, 68.849219],
+  [45.277344, 68.847448],
+  [45.277673, 68.845620],
+  [45.278361, 68.843676],
+  [45.280079, 68.838977],
+  [45.280624, 68.837545],
+  [45.280475, 68.836133],
+  [45.280331, 68.833141],
+  [45.279918, 68.832047],
+  [45.277605, 68.827572],
+  [45.273975, 68.820380],
+  [45.271042, 68.814735],
+  [45.268792, 68.811954],
+  [45.268036, 68.811002],
+  [45.268418, 68.809371],
+  [45.268441, 68.808208],
+  [45.268387, 68.805951],
+  [45.268868, 68.803483],
+  [45.269487, 68.800250],
+  [45.270533, 68.797551],
+  [45.272003, 68.793916],
+  [45.272544, 68.792764],
+  [45.273400, 68.791276],
+  [45.275712, 68.787217],
+  [45.278003, 68.782791],
+  [45.280614, 68.777692],
+  [45.281180, 68.776508],
+  [45.282103, 68.773687],
+  [45.282526, 68.772385],
+  [45.282618, 68.770518],
+  [45.282605, 68.769053],
+  [45.280951, 68.766734],
+  [45.278617, 68.763986],
+  [45.276613, 68.761635],
+  [45.276174, 68.760510],
+  [45.276266, 68.759221],
+  [45.276400, 68.758046],
+  [45.276619, 68.756437],
+  [45.276638, 68.754954],
+  [45.276546, 68.752793],
+  [45.276514, 68.750831],
+  [45.276877, 68.748964],
+  [45.277277, 68.747133],
+  [45.277602, 68.745673],
+  [45.277815, 68.744385],
+  [45.278012, 68.743137],
+  [45.278267, 68.741451],
+  [45.278448, 68.740063],
+  [45.278827, 68.738364],
+  [45.279002, 68.737184],
+  [45.279024, 68.736081],
+  [45.278531, 68.735091],
+  [45.278429, 68.733147],
+  [45.278496, 68.731813],
+  [45.279148, 68.730584],
+  [45.279813, 68.729431],
+  [45.280388, 68.728495],
+  [45.281091, 68.726945],
+  [45.281610, 68.724662],
+  [45.281874, 68.723016],
+  [45.281887, 68.721990],
+  [45.282074, 68.720544],
+  [45.282310, 68.717980],
+  [45.282281, 68.716805],
+  [45.281304, 68.716475],
+  [45.281544, 68.712135],
+];
+
+const MARKS = [
+  { km: "5 км", lat: 45.273627, lon: 68.882138 },
+  { km: "10 км", lat: 45.274986, lon: 68.822383 },
+  { km: "20 км", lat: 45.281544, lon: 68.712135 },
+];
+L.polyline(ROAD, { color: "#ff2d3c", weight: 4, opacity: 0.92, interactive: false }).addTo(map);
+MARKS.forEach((mark) => {
+  L.marker([mark.lat, mark.lon], {
+    interactive: false,
+    zIndexOffset: 7000,
+    icon: L.divIcon({
+      className: "km-pin",
+      iconSize: [36, 48],
+      iconAnchor: [18, 40],
+      html: '<svg viewBox="0 0 64 84" width="36" height="48" aria-hidden="true">'
+        + '<ellipse cx="32" cy="78" rx="9" ry="3" fill="none" stroke="#ff2d3c" stroke-width="3"/>'
+        + '<path d="M32 68C44 52 54 40 54 26A22 22 0 1 0 10 26c0 14 10 26 22 42z" fill="#ff2d3c"/>'
+        + '<circle cx="32" cy="26" r="8" fill="#fff"/></svg><b>' + mark.km + "</b>",
+    }),
+  }).addTo(map);
+});
+
+const Rose = L.Layer.extend({
+  onAdd(map) {
+    this._map = map;
+    this._canvas = L.DomUtil.create("canvas", "leaflet-rose");
+    map.getPane("overlayPane").appendChild(this._canvas);
+    map.on("move zoom resize", this._draw, this);
+    this._draw();
+  },
+  onRemove(map) {
+    L.DomUtil.remove(this._canvas);
+    map.off("move zoom resize", this._draw, this);
+  },
+  _draw() {
+    const map = this._map;
+    const size = map.getSize();
+    const dpr = window.devicePixelRatio || 1;
+    const origin = map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(this._canvas, origin);
+    this._canvas.width = size.x * dpr;
+    this._canvas.height = size.y * dpr;
+    this._canvas.style.width = size.x + "px";
+    this._canvas.style.height = size.y + "px";
+    const ctx = this._canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size.x, size.y);
+    const project = (lat, lon) => {
+      const p = map.latLngToContainerPoint([lat, lon]);
+      return [p.x, p.y];
+    };
+    const paintRose = (lat, lon, maxM, roseData) => {
+      const scale = maxM / 22.5;
+      const center = project(lat, lon);
+      const discEdge = project(...dest(lat, lon, 90, maxM * 1.06));
+      ctx.beginPath();
+      ctx.arc(center[0], center[1], Math.hypot(discEdge[0] - center[0], discEdge[1] - center[1]), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,253,251,0.26)";
+      ctx.fill();
+      const wedge = (bearing, r0, r1) => {
+        const pts = [];
+        for (let i = 0; i <= 12; i++) pts.push(dest(lat, lon, bearing - 11.25 + 22.5 * i / 12, r1));
+        for (let i = 12; i >= 0; i--) pts.push(dest(lat, lon, bearing - 11.25 + 22.5 * i / 12, r0));
+        ctx.beginPath();
+        pts.forEach((ll, i) => {
+          const p = project(ll[0], ll[1]);
+          if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+        });
+        ctx.closePath();
+      };
+      for (let s = 0; s < 16; s++) {
+        let acc = 0;
+        for (let b = 0; b < 6; b++) {
+          const n = roseData.counts[s][b];
+          if (!n) continue;
+          const r0 = acc * scale;
+          acc += n / roseData.hours * 100;
+          const r1 = acc * scale;
+          wedge(s * 22.5, r0, r1);
+          ctx.fillStyle = COLORS[b];
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.85)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+      const hub = project(lat, lon);
+      const hubEdge = project(...dest(lat, lon, 90, Math.max(140, maxM * 0.07)));
+      const hubR = Math.hypot(hubEdge[0] - hub[0], hubEdge[1] - hub[1]);
+      ctx.beginPath();
+      ctx.arc(hub[0], hub[1], Math.max(hubR, 11), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,253,251,0.72)";
+      ctx.fill();
+      ctx.fillStyle = "#6f675e";
+      ctx.font = "600 11px Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("штиль", hub[0], hub[1] - 7);
+      ctx.fillText(roseData.calm.toFixed(1).replace(".", ",") + "%", hub[0], hub[1] + 8);
+      ctx.font = "700 12px Segoe UI, sans-serif";
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.fillStyle = "#2b2824";
+      roseData.names.forEach((name, s) => {
+        const at = project(...dest(lat, lon, s * 22.5, maxM * 1.16));
+        ctx.strokeText(name, at[0], at[1]);
+        ctx.fillText(name, at[0], at[1]);
+      });
+    };
+    paintRose(live.lat, live.lon, MAX_M, live.series[current]);
+    if (small.series && small.series[current]) {
+      paintRose(small.lat, small.lon, SMALL_M, small.series[current]);
+    }
+  }
+});
+const rose = new Rose();
+rose.addTo(map);
+
+const handle = L.marker([live.lat, live.lon], {
+  draggable: true,
+  autoPan: true,
+  zIndexOffset: 500,
+  icon: L.divIcon({ className: "rose-handle", iconSize: [48, 48], iconAnchor: [24, 24] }),
+}).addTo(map);
+
+const smallHandle = L.marker([small.lat, small.lon], {
+  draggable: true,
+  autoPan: true,
+  zIndexOffset: 10000,
+  icon: L.divIcon({ className: "rose-handle", iconSize: [44, 44], iconAnchor: [22, 22] }),
+}).addTo(map);
+
+function fitHandle(marker, lat, lon, meters, minRadius) {
+  const center = map.latLngToContainerPoint([lat, lon]);
+  const edge = map.latLngToContainerPoint(dest(lat, lon, 90, meters));
+  const radius = Math.max(minRadius, Math.hypot(edge.x - center.x, edge.y - center.y));
+  marker.setIcon(L.divIcon({
+    className: "rose-handle",
+    iconSize: [radius * 2, radius * 2],
+    iconAnchor: [radius, radius],
+  }));
+}
+
+function resizeHandle() {
+  fitHandle(handle, live.lat, live.lon, MAX_M * 1.06, 36);
+  fitHandle(smallHandle, small.lat, small.lon, SMALL_M * 1.06, 22);
+}
+
+function bindDrag(marker, point, saved, bump, still, which) {
+  marker.on("drag", () => {
+    const ll = marker.getLatLng();
+    point.lat = ll.lat;
+    point.lon = ll.lng;
+    rose._draw();
+  });
+  marker.on("dragend", () => {
+    const ll = marker.getLatLng();
+    point.lat = ll.lat;
+    point.lon = ll.lng;
+    resizeHandle();
+    settle(point, saved, bump, still, marker, which);
+  });
+}
+
+bindDrag(handle, live, savedPoint, () => ++loadToken, (token) => token === loadToken, "big");
+bindDrag(smallHandle, small, savedSmall, () => ++smallToken, (token) => token === smallToken, "small");
+map.on("zoomend", resizeHandle);
+
+async function ensureSeries(lat, lon) {
+  const key = cellKey(lat, lon);
+  if (windCache.has(key)) return { key, series: windCache.get(key) };
+  if (inflight.has(key)) return inflight.get(key);
+  const job = (async () => {
+    const url = "https://archive-api.open-meteo.com/v1/archive?latitude=" + lat.toFixed(5)
+      + "&longitude=" + lon.toFixed(5)
+      + "&start_date=2023-01-01&end_date=2025-12-31"
+      + "&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=Asia/Almaty&models=era5";
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const payload = await response.json();
+    const hourly = payload.hourly || {};
+    const built = seriesFromHourly(hourly.time || [], hourly.wind_speed_10m || [], hourly.wind_direction_10m || []);
+    if (!built["2023–2025"].hours) throw new Error("пусто");
+    const snappedKey = Number.isFinite(payload.latitude) ? cellKey(payload.latitude, payload.longitude) : key;
+    windCache.set(snappedKey, built);
+    windCache.set(key, built);
+    return { key: snappedKey, series: built };
+  })();
+  inflight.set(key, job);
+  try {
+    return await job;
+  } finally {
+    inflight.delete(key);
+  }
+}
+
+function samePlace(lat, lon, point) {
+  return Math.abs(point.lat - lat) < 1e-5 && Math.abs(point.lon - lon) < 1e-5;
+}
+
+async function settle(point, saved, bump, still, marker, which) {
+  const token = bump();
+  const lat = point.lat;
+  const lon = point.lon;
+  focus = which;
+  const key = cellKey(lat, lon);
+  const previous = point.cell;
+  const moved = Math.hypot(lat - saved.lat, lon - saved.lon) > 1e-5;
+  if (windCache.has(key)) {
+    if (!still(token) || !samePlace(lat, lon, point)) return;
+    point.series = windCache.get(key);
+    point.cell = key;
+    saved.lat = lat;
+    saved.lon = lon;
+    fillPanel();
+    if (moved && key === previous) {
+      document.getElementById("where").textContent = placeLine("та же ячейка, около 25 км, ветер не меняется");
+    }
+    return;
+  }
+  document.getElementById("where").textContent = "Считаю ветер ERA5 для этой точки…";
+  try {
+    const got = await ensureSeries(lat, lon);
+    if (!still(token) || !samePlace(lat, lon, point)) return;
+    point.series = got.series;
+    point.cell = got.key;
+    saved.lat = lat;
+    saved.lon = lon;
+    fillPanel();
+  } catch (error) {
+    if (!still(token) || !samePlace(lat, lon, point)) return;
+    point.lat = saved.lat;
+    point.lon = saved.lon;
+    point.cell = cellKey(saved.lat, saved.lon);
+    marker.setLatLng([saved.lat, saved.lon]);
+    if (!point.series) focus = "big";
+    resizeHandle();
+    fillPanel();
+    const name = which === "small" ? "Малый круг" : "Большой круг";
+    document.getElementById("where").textContent = name + " возвращён: ветер для новой точки не скачался. Цифры — "
+      + (focused() === small ? "малый круг" : "большой круг") + ".";
+    rose._draw();
+  }
+}
+
+async function loadVillage() {
+  const token = ++smallToken;
+  try {
+    const got = await ensureSeries(WIND.village.lat, WIND.village.lon);
+    if (token !== smallToken) return;
+    if (cellKey(small.lat, small.lon) !== cellKey(WIND.village.lat, WIND.village.lon)) return;
+    small.series = got.series;
+    small.cell = got.key;
+    if (rose._map) rose._draw();
+  } catch (error) {
+    if (token !== smallToken) return;
+  }
+}
+
+function fillPanel() {
+  const data = series();
+  document.getElementById("where").textContent = placeLine();
+  document.getElementById("dir").textContent = data.prevailing;
+  document.getElementById("share").textContent = data.share.toFixed(1).replace(".", ",") + "% всех часов · " + current;
+  document.getElementById("speed").textContent = data.mean.toFixed(1).replace(".", ",") + " м/с";
+  document.getElementById("calm").textContent = data.calm.toFixed(1).replace(".", ",") + "%";
+  document.getElementById("hours").textContent = data.hours.toLocaleString("ru-RU");
+  rose._draw();
+  placeAnchor();
+  if (view3dReady && document.getElementById("btn3d").classList.contains("on")) buildVolume();
+}
+
+const years = document.getElementById("years");
+Object.keys(WIND.series).forEach((key) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = key === "2023–2025" ? "3 года" : key;
+  button.className = key === current ? "on" : "";
+  button.onclick = () => {
+    current = key;
+    [...years.children].forEach((item) => item.classList.toggle("on", item === button));
+    fillPanel();
+  };
+  years.appendChild(button);
+});
+const legend = document.getElementById("legend");
+GRADES.forEach((label, i) => {
+  const sw = document.createElement("i");
+  sw.className = "swatch";
+  sw.style.background = COLORS[i];
+  legend.appendChild(sw);
+  const text = document.createElement("span");
+  text.textContent = label;
+  legend.appendChild(text);
+});
+
+let renderer, scene, camera, volume, anchor, groundMesh;
+let yaw = 0.55, pitch = 0.72, distance = 16000;
+let dragging = false, lastX = 0, lastY = 0;
+let view3dReady = false;
+
+function placeAnchor() {
+  if (!anchor) return;
+  const g = WIND.ground;
+  const midLat = (g.south + g.north) / 2 * Math.PI / 180;
+  const point = focused();
+  anchor.position.set(
+    (point.lon - (g.west + g.east) / 2) * 111320 * Math.cos(midLat),
+    0,
+    -((point.lat - (g.south + g.north) / 2) * 110540)
+  );
+}
+
+function init3d() {
+  if (view3dReady) return;
+  const canvas = document.getElementById("view3d");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0xc4ad8e);
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xc4ad8e, 28000, 52000);
+  camera = new THREE.PerspectiveCamera(42, 1, 10, 80000);
+  scene.add(new THREE.AmbientLight(0xfff6ea, 0.72));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.15);
+  sun.position.set(-8000, 12000, 6000);
+  scene.add(sun);
+  const g = WIND.ground;
+  const midLat = (g.south + g.north) / 2 * Math.PI / 180;
+  const widthM = (g.east - g.west) * 111320 * Math.cos(midLat);
+  const heightM = (g.north - g.south) * 110540;
+  const tex = new THREE.TextureLoader().load(g.image);
+  if ("colorSpace" in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(widthM, heightM),
+    new THREE.MeshLambertMaterial({ map: tex, color: 0xffffff })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+  groundMesh = ground;
+  anchor = new THREE.Group();
+  scene.add(anchor);
+  placeAnchor();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(MAX_M, MAX_M + 140, 64),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 30;
+  anchor.add(ring);
+  volume = new THREE.Group();
+  anchor.add(volume);
+  view3dReady = true;
+  buildVolume();
+  resize3d();
+  requestAnimationFrame(frame);
+}
+
+function pushTri(list, a, b, c) { list.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+function quad(list, a, b, c, d) { pushTri(list, a, b, c); pushTri(list, a, c, d); }
+function pointAt(bearing, radius, y) {
+  const a = bearing * Math.PI / 180;
+  return [Math.sin(a) * radius, y, -Math.cos(a) * radius];
+}
+function addWedge(list, a0, a1, r0, r1, height) {
+  const steps = 8;
+  const y1 = height;
+  for (let i = 0; i < steps; i++) {
+    const t0 = a0 + (a1 - a0) * i / steps;
+    const t1 = a0 + (a1 - a0) * (i + 1) / steps;
+    const ib0 = pointAt(t0, r0, 0), ob0 = pointAt(t0, r1, 0);
+    const it0 = pointAt(t0, r0, y1), ot0 = pointAt(t0, r1, y1);
+    const ib1 = pointAt(t1, r0, 0), ob1 = pointAt(t1, r1, 0);
+    const it1 = pointAt(t1, r0, y1), ot1 = pointAt(t1, r1, y1);
+    quad(list, ob0, ob1, ot1, ot0);
+    quad(list, ib1, ib0, it0, it1);
+    quad(list, it0, ot0, ot1, it1);
+    quad(list, ib0, ib1, ob1, ob0);
+    if (i === 0) quad(list, ib0, ob0, ot0, it0);
+    if (i === steps - 1) quad(list, ob1, ib1, it1, ot1);
+  }
+}
+
+function buildVolume() {
+  if (!volume) return;
+  while (volume.children.length) {
+    const child = volume.children.pop();
+    child.geometry.dispose();
+    child.material.dispose();
+  }
+  const data = focused().series[current];
+  const heights = [420, 820, 1280, 1800, 2400, 3200];
+  for (let bin = 0; bin < 6; bin++) {
+    const list = [];
+    for (let s = 0; s < 16; s++) {
+      const n = data.counts[s][bin];
+      if (!n) continue;
+      let inner = 0;
+      for (let b = 0; b < bin; b++) inner += data.counts[s][b];
+      const r0 = inner / data.hours * 100 * SCALE;
+      const r1 = (inner + n) / data.hours * 100 * SCALE;
+      if (!(r1 > r0)) continue;
+      addWedge(list, s * 22.5 - 11.25, s * 22.5 + 11.25, r0, r1, heights[bin]);
+    }
+    if (!list.length) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(list, 3));
+    geo.computeVertexNormals();
+    volume.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: COLORS[bin], flatShading: true })));
+  }
+}
+
+function resize3d() {
+  if (!renderer) return;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h, true);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+}
+
+function frame() {
+  if (!document.getElementById("btn3d").classList.contains("on")) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  const target = anchor.position;
+  camera.position.set(
+    target.x + distance * Math.cos(pitch) * Math.sin(yaw),
+    target.y + distance * Math.sin(pitch),
+    target.z + distance * Math.cos(pitch) * Math.cos(yaw)
+  );
+  camera.lookAt(target.x, 400, target.z);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+const canvas3d = document.getElementById("view3d");
+const pointers = new Map();
+let pinchDist = 0;
+function phone() { return window.matchMedia("(max-width: 720px)").matches; }
+function hud2d() {
+  return phone()
+    ? "Тяните большой или малый круг. Двумя пальцами приближайте карту."
+    : "Тяните большой или малый круг. После отпускания цифры считаются для этой точки.";
+}
+function hud3d() {
+  return phone()
+    ? "Ведите пальцем, чтобы повернуть. Двумя пальцами — ближе и дальше."
+    : "Тяните мышь, чтобы повернуть. Колесо — ближе и дальше. Высота столбика — сила ветра, длина — как часто он дует.";
+}
+canvas3d.addEventListener("pointerdown", (event) => {
+  canvas3d.setPointerCapture(event.pointerId);
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pointers.size === 1) {
+    dragging = true;
+    lastX = event.clientX;
+    lastY = event.clientY;
+  } else {
+    dragging = false;
+    const pts = [...pointers.values()];
+    pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  }
+});
+function releasePointer(event) {
+  pointers.delete(event.pointerId);
+  if (pointers.size === 1) {
+    const p = [...pointers.values()][0];
+    dragging = true;
+    lastX = p.x;
+    lastY = p.y;
+  } else {
+    dragging = false;
+  }
+}
+canvas3d.addEventListener("pointerup", releasePointer);
+canvas3d.addEventListener("pointercancel", releasePointer);
+canvas3d.addEventListener("pointermove", (event) => {
+  if (!pointers.has(event.pointerId)) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (pointers.size >= 2) {
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    if (pinchDist > 0 && d > 0) distance = Math.max(4000, Math.min(32000, distance * (pinchDist / d)));
+    pinchDist = d;
+    return;
+  }
+  if (!dragging) return;
+  yaw -= (event.clientX - lastX) * 0.005;
+  pitch = Math.max(0.18, Math.min(1.25, pitch + (event.clientY - lastY) * 0.003));
+  lastX = event.clientX;
+  lastY = event.clientY;
+});
+canvas3d.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  distance = Math.max(4000, Math.min(32000, distance * (event.deltaY > 0 ? 1.08 : 0.92)));
+}, { passive: false });
+window.addEventListener("resize", resize3d);
+
+function show2d() {
+  document.getElementById("map").style.display = "block";
+  canvas3d.style.display = "none";
+  document.getElementById("btn2d").classList.add("on");
+  document.getElementById("btn3d").classList.remove("on");
+  document.getElementById("hud").textContent = hud2d();
+  setTimeout(() => map.invalidateSize(), 50);
+}
+function show3d() {
+  document.getElementById("map").style.display = "none";
+  canvas3d.style.display = "block";
+  document.getElementById("btn3d").classList.add("on");
+  document.getElementById("btn2d").classList.remove("on");
+  document.getElementById("hud").textContent = hud3d();
+  if (view3dReady) {
+    placeAnchor();
+    buildVolume();
+  } else {
+    init3d();
+  }
+  resize3d();
+}
+document.getElementById("btn2d").onclick = show2d;
+document.getElementById("btn3d").onclick = show3d;
+fillPanel();
+
+const OBS_STEP = 5000;
+const GEOD_A = 6378137.0;
+const GEOD_F = 1 / 298.257223563;
+const GEOD_B = GEOD_A * (1 - GEOD_F);
+
+function geodDirect(latDeg, lonDeg, aziDeg, distM) {
+  const phi1 = latDeg * Math.PI / 180;
+  const alpha1 = aziDeg * Math.PI / 180;
+  const sinAlpha1 = Math.sin(alpha1);
+  const cosAlpha1 = Math.cos(alpha1);
+  const tanU1 = (1 - GEOD_F) * Math.tan(phi1);
+  const cosU1 = 1 / Math.sqrt(1 + tanU1 * tanU1);
+  const sinU1 = tanU1 * cosU1;
+  const sigma1 = Math.atan2(tanU1, cosAlpha1);
+  const sinAlpha = cosU1 * sinAlpha1;
+  const cosSqAlpha = 1 - sinAlpha * sinAlpha;
+  const uSq = cosSqAlpha * (GEOD_A * GEOD_A - GEOD_B * GEOD_B) / (GEOD_B * GEOD_B);
+  const aa = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)));
+  const bb = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)));
+  let sigma = distM / (GEOD_B * aa);
+  let prev = 0;
+  let cos2SigmaM = 0;
+  let sinSigma = 0;
+  let cosSigma = 0;
+  for (let i = 0; i < 100 && Math.abs(sigma - prev) > 1e-12; i++) {
+    cos2SigmaM = Math.cos(2 * sigma1 + sigma);
+    sinSigma = Math.sin(sigma);
+    cosSigma = Math.cos(sigma);
+    const delta = bb * sinSigma * (
+      cos2SigmaM + bb / 4 * (
+        cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)
+        - bb / 6 * cos2SigmaM * (-3 + 4 * sinSigma * sinSigma) * (-3 + 4 * cos2SigmaM * cos2SigmaM)
+      )
+    );
+    prev = sigma;
+    sigma = distM / (GEOD_B * aa) + delta;
+  }
+  const tmp = sinU1 * sinSigma - cosU1 * cosSigma * cosAlpha1;
+  const phi2 = Math.atan2(
+    sinU1 * cosSigma + cosU1 * sinSigma * cosAlpha1,
+    (1 - GEOD_F) * Math.sqrt(sinAlpha * sinAlpha + tmp * tmp)
+  );
+  const lambda = Math.atan2(sinSigma * sinAlpha1, cosU1 * cosSigma - sinU1 * sinSigma * cosAlpha1);
+  const c = GEOD_F / 16 * cosSqAlpha * (4 + GEOD_F * (4 - 3 * cosSqAlpha));
+  const shift = lambda - (1 - c) * GEOD_F * sinAlpha * (
+    sigma + c * sinSigma * (cos2SigmaM + c * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM))
+  );
+  let lon2 = lonDeg + shift * 180 / Math.PI;
+  lon2 = ((lon2 + 540) % 360) - 180;
+  return [phi2 * 180 / Math.PI, lon2];
+}
+
+function geodInverse(lat1, lon1, lat2, lon2) {
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const turn = (lon2 - lon1) * Math.PI / 180;
+  const u1 = Math.atan((1 - GEOD_F) * Math.tan(phi1));
+  const u2 = Math.atan((1 - GEOD_F) * Math.tan(phi2));
+  const sinU1 = Math.sin(u1);
+  const cosU1 = Math.cos(u1);
+  const sinU2 = Math.sin(u2);
+  const cosU2 = Math.cos(u2);
+  let lambda = turn;
+  let sinSigma = 0;
+  let cosSigma = 0;
+  let sigma = 0;
+  let sinAlpha = 0;
+  let cosSqAlpha = 0;
+  let cos2SigmaM = 0;
+  for (let i = 0; i < 100; i++) {
+    const sinLambda = Math.sin(lambda);
+    const cosLambda = Math.cos(lambda);
+    sinSigma = Math.sqrt(
+      (cosU2 * sinLambda) ** 2 +
+      (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda) ** 2
+    );
+    if (sinSigma === 0) return 0;
+    cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda;
+    sigma = Math.atan2(sinSigma, cosSigma);
+    sinAlpha = cosU1 * cosU2 * sinLambda / sinSigma;
+    cosSqAlpha = 1 - sinAlpha * sinAlpha;
+    cos2SigmaM = cosSqAlpha === 0 ? 0 : cosSigma - 2 * sinU1 * sinU2 / cosSqAlpha;
+    const c = GEOD_F / 16 * cosSqAlpha * (4 + GEOD_F * (4 - 3 * cosSqAlpha));
+    const next = turn + (1 - c) * GEOD_F * sinAlpha * (
+      sigma + c * sinSigma * (cos2SigmaM + c * cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM))
+    );
+    if (Math.abs(next - lambda) < 1e-12) {
+      lambda = next;
+      break;
+    }
+    lambda = next;
+  }
+  const uSq = cosSqAlpha * (GEOD_A * GEOD_A - GEOD_B * GEOD_B) / (GEOD_B * GEOD_B);
+  const aa = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)));
+  const bb = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)));
+  const delta = bb * sinSigma * (
+    cos2SigmaM + bb / 4 * (
+      cosSigma * (-1 + 2 * cos2SigmaM * cos2SigmaM)
+      - bb / 6 * cos2SigmaM * (-3 + 4 * sinSigma * sinSigma) * (-3 + 4 * cos2SigmaM * cos2SigmaM)
+    )
+  );
+  return GEOD_B * aa * (sigma - delta);
+}
+
+function obsIcon(kind, label, side) {
+  const color = kind === "end" ? "#2f6bff" : kind === "center" ? "#ff2d3c" : "#f0a020";
+  const dot = kind === "mid" ? 12 : 16;
+  const box = kind === "center" ? 44 : dot;
+  const labelClass = side === "west" ? "west" : "";
+  return L.divIcon({
+    className: "obs-pt" + (kind === "center" ? " obs-center" : ""),
+    iconSize: [box, box],
+    iconAnchor: [box / 2, box / 2],
+    html: '<i style="width:' + dot + "px;height:" + dot + "px;background:" + color + '"></i><b class="' + labelClass + '">' + label + "</b>",
+  });
+}
+
+function oddCount(value) {
+  const clamped = Math.max(3, Math.min(15, Math.round(value)));
+  if (clamped % 2 === 1) return clamped;
+  return clamped < 15 ? clamped + 1 : clamped - 1;
+}
+
+function buildProfile(lat, lon, count, id) {
+  const centerIndex = Math.floor((count - 1) / 2);
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    const steps = i - centerIndex;
+    let plat = lat;
+    let plon = lon;
+    if (steps !== 0) {
+      const moved = geodDirect(lat, lon, steps > 0 ? 0 : 180, Math.abs(steps) * OBS_STEP);
+      plat = moved[0];
+      plon = moved[1];
+    }
+    points.push({ index: i, label: id + "." + i, lat: plat, lon: plon, center: steps === 0 });
+  }
+  return points;
+}
+
+let obsCount = 7;
+const obsProfiles = ["20", "10", "5"].map((id) => {
+  const mark = MARKS.find((item) => item.km === id + " км");
+  const color = id === "20" ? "#ff2d3c" : id === "10" ? "#f39a1a" : "#3aa0e8";
+  return { id, title: mark.km, color, lat: mark.lat, lon: mark.lon };
+});
+
+function paintProfile(profile, moveCenter) {
+  profile.group.clearLayers();
+  const points = buildProfile(profile.lat, profile.lon, obsCount, profile.id);
+  profile.points = points;
+  const latlngs = points.map((point) => [point.lat, point.lon]);
+  L.polyline(latlngs, { color: "#ffffff", weight: 7, opacity: 0.92, interactive: false }).addTo(profile.group);
+  L.polyline(latlngs, {
+    color: profile.color,
+    weight: 5,
+    opacity: 1,
+    dashArray: "1 14",
+    lineCap: "round",
+    interactive: false,
+  }).addTo(profile.group);
+  const side = profile.id === "5" ? "east" : "west";
+  points.forEach((point, index) => {
+    if (point.center) return;
+    const kind = index === 0 || index === points.length - 1 ? "end" : "mid";
+    L.marker([point.lat, point.lon], {
+      interactive: false,
+      zIndexOffset: 8200,
+      icon: obsIcon(kind, point.label, side),
+    }).addTo(profile.group);
+  });
+  for (let index = 0; index < points.length - 1; index++) {
+    const mid = geodDirect(points[index].lat, points[index].lon, 0, OBS_STEP / 2);
+    const gap = geodInverse(points[index].lat, points[index].lon, points[index + 1].lat, points[index + 1].lon);
+    const text = Math.abs(gap - OBS_STEP) < 0.05 ? "5 км" : (gap / 1000).toFixed(3).replace(".", ",") + " км";
+    L.marker(mid, {
+      interactive: false,
+      zIndexOffset: 7800,
+      icon: L.divIcon({
+        className: "obs-gap",
+        html: text,
+        iconSize: [40, 16],
+        iconAnchor: side === "west" ? [48, 8] : [-8, 8],
+      }),
+    }).addTo(profile.group);
+  }
+  const centerIndex = Math.floor((obsCount - 1) / 2);
+  const centerLabel = profile.id + "." + centerIndex;
+  if (profile.centerLabel !== centerLabel || profile.centerSide !== side) {
+    profile.centerMarker.setIcon(obsIcon("center", centerLabel, side));
+    profile.centerLabel = centerLabel;
+    profile.centerSide = side;
+  }
+  if (moveCenter) profile.centerMarker.setLatLng([profile.lat, profile.lon]);
+}
+
+function setupObservations() {
+  obsProfiles.forEach((profile) => {
+    profile.group = L.layerGroup().addTo(map);
+    profile.centerMarker = L.marker([profile.lat, profile.lon], {
+      draggable: true,
+      autoPan: true,
+      zIndexOffset: 12000,
+      icon: obsIcon("center", profile.id + ".0"),
+    }).addTo(map);
+    const followCenter = () => {
+      const ll = profile.centerMarker.getLatLng();
+      profile.lat = ll.lat;
+      profile.lon = ll.lng;
+      paintProfile(profile, false);
+      refreshSheet();
+    };
+    profile.centerMarker.on("drag", followCenter);
+    profile.centerMarker.on("dragend", followCenter);
+    paintProfile(profile, true);
+  });
+}
+
+function sheetOpen() {
+  return document.getElementById("sheet").style.display === "block";
+}
+
+function renderSheet() {
+  const table = document.getElementById("sheetTable");
+  table.replaceChildren();
+  const head = document.createElement("tr");
+  ["Профиль", "Точка", "Широта", "Долгота", "До предыдущей, м", "До следующей, м"].forEach((name) => {
+    const cell = document.createElement("th");
+    cell.textContent = name;
+    head.appendChild(cell);
+  });
+  table.appendChild(head);
+  obsProfiles.forEach((profile) => {
+    const points = profile.points || [];
+    points.forEach((point, index) => {
+      const prev = index
+        ? geodInverse(points[index - 1].lat, points[index - 1].lon, point.lat, point.lon)
+        : null;
+      const next = index < points.length - 1
+        ? geodInverse(point.lat, point.lon, points[index + 1].lat, points[index + 1].lon)
+        : null;
+      const row = document.createElement("tr");
+      [
+        profile.title,
+        point.label,
+        point.lat.toFixed(6).replace(".", ","),
+        point.lon.toFixed(6).replace(".", ","),
+        prev == null ? "—" : prev.toFixed(2).replace(".", ","),
+        next == null ? "—" : next.toFixed(2).replace(".", ","),
+      ].forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      table.appendChild(row);
+    });
+  });
+}
+
+function refreshSheet() {
+  if (sheetOpen()) renderSheet();
+}
+
+function excelCsv() {
+  const lines = ["профиль;точка;широта;долгота;до_предыдущей_м;до_следующей_м"];
+  obsProfiles.forEach((profile) => {
+    const points = profile.points || [];
+    points.forEach((point, index) => {
+      const prev = index
+        ? geodInverse(points[index - 1].lat, points[index - 1].lon, point.lat, point.lon)
+        : null;
+      const next = index < points.length - 1
+        ? geodInverse(point.lat, point.lon, points[index + 1].lat, points[index + 1].lon)
+        : null;
+      const num = (value) => (value == null ? "" : value.toFixed(3).replace(".", ","));
+      lines.push([
+        profile.title,
+        point.label,
+        point.lat.toFixed(8).replace(".", ","),
+        point.lon.toFixed(8).replace(".", ","),
+        num(prev),
+        num(next),
+      ].join(";"));
+    });
+  });
+  return "\uFEFF" + lines.join("\r\n");
+}
+
+function applyObsCount(commit) {
+  const input = document.getElementById("obsCount");
+  const raw = input.value.trim();
+  const next = Math.round(Number(raw));
+  if (!Number.isFinite(next) || raw === "") {
+    if (commit) input.value = String(obsCount);
+    return;
+  }
+  if (!commit && (next < 3 || next > 15)) return;
+  const count = oddCount(next);
+  if (count === obsCount) {
+    if (commit) input.value = String(obsCount);
+    return;
+  }
+  obsCount = count;
+  if (commit) input.value = String(obsCount);
+  obsProfiles.forEach((profile) => paintProfile(profile, true));
+  refreshSheet();
+}
+document.getElementById("obsCount").addEventListener("input", () => applyObsCount(false));
+document.getElementById("obsCount").addEventListener("change", () => applyObsCount(true));
+document.getElementById("obsTable").onclick = () => {
+  const sheet = document.getElementById("sheet");
+  if (sheetOpen()) {
+    sheet.style.display = "none";
+    return;
+  }
+  renderSheet();
+  sheet.style.display = "block";
+};
+document.getElementById("sheetClose").onclick = () => {
+  document.getElementById("sheet").style.display = "none";
+};
+document.getElementById("obsExcel").onclick = () => {
+  const blob = new Blob([excelCsv()], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = "точки_наблюдения.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+};
+
+setupObservations();
+const mapFrame = L.latLngBounds([WIND.lat, WIND.lon], [WIND.village.lat, WIND.village.lon]);
+MARKS.forEach((mark) => mapFrame.extend([mark.lat, mark.lon]));
+obsProfiles.forEach((profile) => {
+  profile.points.forEach((point) => mapFrame.extend([point.lat, point.lon]));
+});
+map.fitBounds(mapFrame, {
+  animate: false,
+  maxZoom: 13,
+  paddingTopLeft: phone() ? [24, 56] : [330, 48],
+  paddingBottomRight: phone() ? [24, Math.round(window.innerHeight * 0.48)] : [80, 80],
+});
+resizeHandle();
+document.getElementById("hud").textContent = hud2d();
+loadVillage();
+</script>
+</body>
+</html>
