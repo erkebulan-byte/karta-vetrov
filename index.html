@@ -118,7 +118,7 @@
   </div>
   <div class="legend" id="legend"></div>
   <div class="obs-tools">
-    <label>Точек на линии <input id="obsCount" type="number" min="3" max="15" step="2" value="7" title="Нечётное число: метка остаётся средней точкой"></label>
+    <label>Точек на линии <input id="obsCount" type="number" min="3" max="15" step="2" value="3" title="Нечётное число: метка остаётся средней точкой"></label>
     <button id="obsTable" type="button">Таблица</button>
     <button id="obsExcel" type="button">Excel</button>
   </div>
@@ -1068,7 +1068,7 @@ function buildProfile(lat, lon, count, id) {
   return points;
 }
 
-let obsCount = 7;
+let obsCount = 3;
 const obsProfiles = ["20", "10", "5"].map((id) => {
   const mark = MARKS.find((item) => item.km === id + " км");
   const color = id === "20" ? "#ff2d3c" : id === "10" ? "#f39a1a" : "#3aa0e8";
@@ -1129,7 +1129,7 @@ function setupObservations() {
       draggable: true,
       autoPan: true,
       zIndexOffset: 12000,
-      icon: obsIcon("center", profile.id + ".3", "west", profile.lat, profile.lon),
+      icon: obsIcon("center", profile.id + ".1", "west", profile.lat, profile.lon),
     }).addTo(map);
     const followCenter = () => {
       const ll = profile.centerMarker.getLatLng();
