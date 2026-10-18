@@ -56,10 +56,13 @@
   .obs-pt i { display: block; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
   .obs-pt b {
     position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
-    color: #fff; font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none;
+    color: #fff; font-size: 13px; font-weight: 800; line-height: 1.15; white-space: nowrap; pointer-events: none;
     text-shadow: 0 1px 2px #000, 0 0 4px #000;
   }
-  .obs-pt b.west { left: auto; right: 20px; }
+  .obs-pt b small {
+    display: block; margin-top: 1px; font-size: 10px; font-weight: 700; line-height: 1.15;
+  }
+  .obs-pt b.west { left: auto; right: 20px; text-align: right; }
   .obs-center { cursor: grab; display: flex; align-items: center; justify-content: center; touch-action: none; }
   .obs-center:active { cursor: grabbing; }
   .obs-center b { left: 40px; }
@@ -119,7 +122,7 @@
     <button id="obsTable" type="button">Таблица</button>
     <button id="obsExcel" type="button">Excel</button>
   </div>
-  <p class="note">Через метки 5, 10 и 20 км идут прямые на север и юг. Соседние точки — ровно 5 км. Красную точку в центре линии можно перетащить: остальные точки этой линии пересчитаются. Исходные метки на дороге остаются на месте.</p>
+  <p class="note">Через метки 5, 10 и 20 км идут прямые на север и юг. Соседние точки — ровно 5 км. У каждой точки написаны широта и долгота. Красную точку в центре линии можно перетащить: остальные точки и координаты этой линии пересчитаются. Исходные метки на дороге остаются на месте.</p>
 </aside>
 <div class="hud" id="hud">Тяните большой или малый круг. После отпускания цифры считаются для этой точки.</div>
 <div class="sheet" id="sheet">
@@ -1010,7 +1013,15 @@ function geodInverse(lat1, lon1, lat2, lon2) {
   return GEOD_B * aa * (sigma - delta);
 }
 
-function obsIcon(kind, label, side) {
+function formatDeg(value) {
+  return value.toFixed(6).replace(".", ",");
+}
+
+function pointLabelHtml(label, lat, lon) {
+  return label + "<small>" + formatDeg(lat) + "°<br>" + formatDeg(lon) + "°</small>";
+}
+
+function obsIcon(kind, label, side, lat, lon) {
   const color = kind === "end" ? "#2f6bff" : kind === "center" ? "#ff2d3c" : "#f0a020";
   const dot = kind === "mid" ? 12 : 16;
   const box = kind === "center" ? 44 : dot;
@@ -1019,8 +1030,19 @@ function obsIcon(kind, label, side) {
     className: "obs-pt" + (kind === "center" ? " obs-center" : ""),
     iconSize: [box, box],
     iconAnchor: [box / 2, box / 2],
-    html: '<i style="width:' + dot + "px;height:" + dot + "px;background:" + color + '"></i><b class="' + labelClass + '">' + label + "</b>",
+    html: '<i style="width:' + dot + "px;height:" + dot + "px;background:" + color + '"></i><b class="' + labelClass + '">' + pointLabelHtml(label, lat, lon) + "</b>",
   });
+}
+
+function writePointLabel(marker, kind, label, side, lat, lon) {
+  const element = marker.getElement();
+  const caption = element && element.querySelector("b");
+  if (!caption) {
+    marker.setIcon(obsIcon(kind, label, side, lat, lon));
+    return;
+  }
+  caption.className = side === "west" ? "west" : "";
+  caption.innerHTML = pointLabelHtml(label, lat, lon);
 }
 
 function oddCount(value) {
@@ -1067,14 +1089,14 @@ function paintProfile(profile, moveCenter) {
     lineCap: "round",
     interactive: false,
   }).addTo(profile.group);
-  const side = profile.id === "5" ? "east" : "west";
+  const side = "west";
   points.forEach((point, index) => {
     if (point.center) return;
     const kind = index === 0 || index === points.length - 1 ? "end" : "mid";
     L.marker([point.lat, point.lon], {
       interactive: false,
       zIndexOffset: 8200,
-      icon: obsIcon(kind, point.label, side),
+      icon: obsIcon(kind, point.label, side, point.lat, point.lon),
     }).addTo(profile.group);
   });
   for (let index = 0; index < points.length - 1; index++) {
@@ -1094,11 +1116,9 @@ function paintProfile(profile, moveCenter) {
   }
   const centerIndex = Math.floor((obsCount - 1) / 2);
   const centerLabel = profile.id + "." + centerIndex;
-  if (profile.centerLabel !== centerLabel || profile.centerSide !== side) {
-    profile.centerMarker.setIcon(obsIcon("center", centerLabel, side));
-    profile.centerLabel = centerLabel;
-    profile.centerSide = side;
-  }
+  writePointLabel(profile.centerMarker, "center", centerLabel, side, profile.lat, profile.lon);
+  profile.centerLabel = centerLabel;
+  profile.centerSide = side;
   if (moveCenter) profile.centerMarker.setLatLng([profile.lat, profile.lon]);
 }
 
@@ -1109,7 +1129,7 @@ function setupObservations() {
       draggable: true,
       autoPan: true,
       zIndexOffset: 12000,
-      icon: obsIcon("center", profile.id + ".0"),
+      icon: obsIcon("center", profile.id + ".3", "west", profile.lat, profile.lon),
     }).addTo(map);
     const followCenter = () => {
       const ll = profile.centerMarker.getLatLng();
