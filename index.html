@@ -35,6 +35,15 @@
     color: white; font-size: 12px; line-height: 1.35;
     background: rgba(28,25,22,0.55); border-radius: 10px; padding: 8px 10px;
   }
+  .pyat-pin { background: transparent; border: 0; }
+  .pyat-pin b {
+    position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+    color: #fff; font-size: 13px; font-weight: 800; line-height: 1.2; white-space: nowrap;
+    text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  }
+  .pyat-pin b small { display: block; font-size: 12px; font-weight: 700; }
+  #placeCard { display: none; margin-top: 10px; }
+  #placeCard b { display: block; font-size: 15px; }
   .place {
     color: white; font-weight: 700; font-size: 13px; text-shadow: 0 1px 3px #000, 0 0 6px #000;
     background: transparent; border: 0;
@@ -103,6 +112,15 @@
 <canvas id="view3d"></canvas>
 <aside class="panel">
   <h1>Роза ветров</h1>
+  <div class="modes" id="places">
+    <button id="placeHome" class="on" type="button">Кыземшек</button>
+    <button id="placeKurchatov" type="button">Курчатов</button>
+  </div>
+  <div id="placeCard">
+    <b>АО «Парк ядерных технологий»</b>
+    <div class="muted">Абайская область, г. Курчатов, ул. Курчатова, 18/1. Центр здания.</div>
+    <div class="sub" id="pyatCoords"></div>
+  </div>
   <div class="muted" id="where"></div>
   <div class="big" id="dir"></div>
   <div class="sub" id="share"></div>
@@ -1282,6 +1300,48 @@ map.fitBounds(mapFrame, {
 resizeHandle();
 document.getElementById("hud").textContent = hud2d();
 loadVillage();
+
+const PYAT = { lat: 50.7509507, lon: 78.5380299 };
+document.getElementById("pyatCoords").textContent =
+  PYAT.lat.toFixed(7).replace(".", ",") + "° с.ш., " + PYAT.lon.toFixed(7).replace(".", ",") + "° в.д.";
+L.marker([PYAT.lat, PYAT.lon], {
+  interactive: false,
+  zIndexOffset: 9000,
+  icon: L.divIcon({
+    className: "pyat-pin",
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    html: '<i style="display:block;width:16px;height:16px;border-radius:50%;background:#b06bff;border:2px solid #fff"></i><b>АО ПЯТ<small>'
+      + PYAT.lat.toFixed(7).replace(".", ",") + "° с.ш.<br>"
+      + PYAT.lon.toFixed(7).replace(".", ",") + "° в.д.</small></b>",
+  }),
+}).addTo(map);
+
+function showHomePlace() {
+  document.getElementById("placeHome").classList.add("on");
+  document.getElementById("placeKurchatov").classList.remove("on");
+  document.getElementById("placeCard").style.display = "none";
+  map.fitBounds(mapFrame, {
+    animate: false,
+    maxZoom: 13,
+    paddingTopLeft: phone() ? [24, 56] : [330, 48],
+    paddingBottomRight: phone() ? [24, Math.round(window.innerHeight * 0.48)] : [80, 80],
+  });
+}
+function showKurchatov() {
+  if (document.getElementById("btn3d").classList.contains("on")) show2d();
+  document.getElementById("placeHome").classList.remove("on");
+  document.getElementById("placeKurchatov").classList.add("on");
+  document.getElementById("placeCard").style.display = "block";
+  map.fitBounds([[PYAT.lat - 0.008, PYAT.lon - 0.012], [PYAT.lat + 0.008, PYAT.lon + 0.012]], {
+    animate: false,
+    maxZoom: 17,
+    paddingTopLeft: phone() ? [24, 56] : [330, 48],
+    paddingBottomRight: phone() ? [24, Math.round(window.innerHeight * 0.48)] : [80, 80],
+  });
+}
+document.getElementById("placeHome").onclick = showHomePlace;
+document.getElementById("placeKurchatov").onclick = showKurchatov;
 </script>
 </body>
 </html>
